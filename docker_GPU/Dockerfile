@@ -59,6 +59,7 @@ RUN pip install --upgrade pip \
                           pandas \
                           boto3 \
                           protobuf \
+                          scikit-learn \
                           humanize
 RUN apt-get update && apt-get install -y \
     pkg-config \
@@ -92,4 +93,18 @@ RUN pip install --upgrade uwsgi matplotlib
 RUN git pull
 RUN cd dvalib/ssd/checkpoints && unzip ssd_300_vgg.ckpt.zip
 RUN echo "daemon off;" >> /etc/nginx/nginx.conf
+RUN apt-get update && apt-get install -y liblapack3 libopenblas-dev
+RUN git pull
+WORKDIR "/root/DVA/faiss"
+RUN make
+RUN make py
+WORKDIR "/root/DVA/faiss/gpu"
+RUN make -j10
+RUN make py
+WORKDIR "/root/DVA"
+RUN git pull
+RUN cd dvalib/facenet/facenet_model && wget https://www.dropbox.com/s/2unad9skmc7msel/model-20170306-150500.ckpt-250000.data-00000-of-00001 && cd ../../..
+RUN cd dvalib/facenet/facenet_model && wget https://www.dropbox.com/s/j8ky6bl0jgpygp6/model-20170306-150500.ckpt-250000.index && cd ../../..
+RUN cd dvalib/facenet/facenet_model && wget https://www.dropbox.com/s/tnebmpku7xtzwnv/model-20170306-150500.meta && cd ../../..
+ENV PYTHONPATH $PYTHONPATH:/root/DVA/faiss
 EXPOSE 80

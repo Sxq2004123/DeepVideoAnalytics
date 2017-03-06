@@ -8,7 +8,8 @@ from django.views.generic import ListView,DetailView
 from django.utils.decorators import method_decorator
 from .forms import UploadFileForm,YTVideoForm
 from .models import Video,Frame,Detection,Query,QueryResults,TEvent,FrameLabel
-from .tasks import extract_frames,query_by_image
+from .tasks import extract_frames,query_by_image,query_face_by_image
+from dva.celery import app
 
 
 def search(request):
@@ -32,6 +33,7 @@ def search(request):
         with open(query_frame_path,'w') as fh:
             fh.write(image_data)
         result = query_by_image.apply_async(args=[primary_key],queue=settings.Q_RETRIEVER)
+        result_face = query_face_by_image.apply_async(args=[primary_key],queue=settings.Q_FACE_RETRIEVER)
         user = request.user if request.user.is_authenticated() else None
         query.task_id = result.task_id
         query.user = user
@@ -44,10 +46,20 @@ def search(request):
                     r['url'] = '/media/{}/frames/{}.jpg'.format(r['video_primary_key'],r['frame_index'])
                     r['detections'] = [{'pk': d.pk, 'name': d.object_name, 'confidence': d.confidence} for d in Detection.objects.filter(frame_id=r['frame_primary_key'])]
                     results.append(r)
+        if result_face.successful():
+            face_entries = result_face.get()
+            if face_entries:
+                for algo,rlist in entries.iteritems():
+                    for r in rlist:
+                        r['url'] = '/media/{}/detections/{}.jpg'.format(r['video_primary_key'],r['detection_primary_key'])
+                        d = Detection.objects.get(pk=r['detection_primary_key'])
+                        r['result_detect'] = True
+                        r['detection'] = [{'pk': d.pk, 'name': d.object_name, 'confidence': d.confidence},]
+                        results.append(r)
         return JsonResponse(data={'task_id':result.task_id,'primary_key':primary_key,'results':results})
 
 
-def index(request):
+def index(request,query_pk=None,frame_pk=None,detection_pk=None):
     if request.method == 'POST':
         form = UploadFileForm(request.POST, request.FILES)
         user = request.user if request.user.is_authenticated() else None
@@ -58,9 +70,18 @@ def index(request):
     else:
         form = UploadFileForm()
     context = { 'form' : form }
-    context['video_count'] = Video.objects.count()
+    if query_pk:
+        previous_query = Query.objects.get(pk=query_pk)
+        context['initial_url'] = '/media/queries/{}.png'.format(query_pk)
+    elif frame_pk:
+        frame = Frame.objects.get(pk=frame_pk)
+        context['initial_url'] = '/media/{}/frames/{}.jpg'.format(frame.video.pk,frame.frame_index)
+    elif detection_pk:
+        detection = Detection.objects.get(pk=detection_pk)
+        context['initial_url'] = '/media/{}/detections/{}.jpg'.format(detection.video.pk, detection.pk)
     context['frame_count'] = Frame.objects.count()
     context['query_count'] = Query.objects.count()
+    context['video_count'] = Video.objects.count() - context['query_count']
     context['detection_count'] = Detection.objects.count()
     return render(request, 'dashboard.html', context)
 
@@ -168,9 +189,23 @@ class FrameDetail(DetailView):
         return context
 
 
-
 def status(request):
     context = { }
+    return render_status(request,context)
+
+
+def retry_task(request,pk):
+    event = TEvent.objects.get(pk=int(pk))
+    context = {}
+    if event.operation != 'query_by_id':
+        result = app.send_task(name=event.operation, args=[event.video_id],queue=settings.TASK_NAMES_TO_QUEUE[event.operation])
+        context['alert'] = "Operation {} on {} submitted".format(event.operation,event.video.name,queue=settings.TASK_NAMES_TO_QUEUE[event.operation])
+        return render_status(request, context)
+    else:
+        return redirect("/requery/{}/".format(event.video.parent_query_id))
+
+
+def render_status(request,context):
     context['video_count'] = Video.objects.count()
     context['frame_count'] = Frame.objects.count()
     context['query_count'] = Query.objects.count()
@@ -198,3 +233,5 @@ def status(request):
     except:
         context['fab_log'] = ""
     return render(request, 'status.html', context)
+
+

@@ -1,3 +1,4 @@
+.idea/
 logs/*.log
 /db.sqlite3
 /resources/
@@ -34,3 +35,4 @@ experiments/connect.sh
 /dvalib/ssd/checkpoints/ssd_300_vgg.ckpt.index
 /dvalib/ssd/checkpoints/ssd_300_vgg.ckpt.data-00000-of-00001
 /notes/website/
+/dvalib/facenet/facenet_model/model-*

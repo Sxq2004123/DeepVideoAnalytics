@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y libpq-dev && \
 	apt-get clean && \
 	apt-get autoremove && \
 	rm -rf /var/lib/apt/lists/*
-RUN pip install https://s3.amazonaws.com/pytorch/whl/cu75/torch-0.1.6.post22-cp27-none-linux_x86_64.whl
+RUN pip install https://s3.amazonaws.com/pytorch/whl/cu75/torch-0.1.9.post2-cp27-none-linux_x86_64.whl
 RUN pip install scipy
 RUN pip install torchvision
 RUN pip install --upgrade pip \
@@ -58,6 +58,7 @@ RUN pip install --upgrade pip \
                           pandas \
                           boto3 \
                           protobuf \
+                          scikit-learn \
                           humanize
 RUN apt-get update && apt-get install -y \
     pkg-config \
@@ -88,4 +89,14 @@ WORKDIR "/root/DVA"
 RUN git pull
 RUN cd dvalib/ssd/checkpoints && unzip ssd_300_vgg.ckpt.zip
 RUN apt-get update && apt-get install -y liblapack3 libopenblas-dev
+RUN git pull
+WORKDIR "/root/DVA/faiss"
+RUN make
+RUN make py
+WORKDIR "/root/DVA"
+RUN git pull
+RUN cd dvalib/facenet/facenet_model && wget https://www.dropbox.com/s/2unad9skmc7msel/model-20170306-150500.ckpt-250000.data-00000-of-00001 && cd ../../..
+RUN cd dvalib/facenet/facenet_model && wget https://www.dropbox.com/s/j8ky6bl0jgpygp6/model-20170306-150500.ckpt-250000.index && cd ../../..
+RUN cd dvalib/facenet/facenet_model && wget https://www.dropbox.com/s/tnebmpku7xtzwnv/model-20170306-150500.meta && cd ../../..
+ENV PYTHONPATH $PYTHONPATH:/root/DVA/faiss
 VOLUME ["/root/DVA/dva/media"]

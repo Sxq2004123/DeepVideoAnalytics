@@ -133,15 +133,20 @@ def restart_queues(detection=False):
     tries to kill all celery workers and restarts them
     :return:
     """
+    kill_queues()
+    local('fab startq:extractor &')
+    local('fab startq:indexer &')
+    local('fab startq:retriever &')
+    local('fab startq:face &')
+    if detection:
+        local('fab startq:detector &')
+
+@task
+def kill_queues():
     try:
         local("ps auxww | grep 'celery -A dva worker * ' | awk '{print $2}' | xargs kill -9")
     except:
         pass
-    local('fab startq:extractor &')
-    local('fab startq:indexer &')
-    local('fab startq:retriever &')
-    if detection:
-        local('fab startq:detector &')
 
 
 @task
@@ -218,7 +223,9 @@ def launch_queues(detection=False):
     local('fab startq:extractor &')
     local('fab startq:indexer &')
     local('fab startq:retriever &')
-    local('fab startq:detector &')
+    local('fab startq:face &')
+    if detection:
+        local('fab startq:detector &')
 
 
 @task
@@ -238,6 +245,7 @@ def startq(queue_name):
     Q_EXTRACTOR = settings.Q_EXTRACTOR
     Q_DETECTOR = settings.Q_DETECTOR
     Q_RETRIEVER = settings.Q_RETRIEVER
+    Q_FACE = settings.Q_FACE_RETRIEVER
     if queue_name == 'indexer':
         command = 'celery -A dva worker -l info -c {} -Q {} -n {}.%h -f logs/{}.log'.format(1, Q_INDEXER, Q_INDEXER,Q_INDEXER)
     elif queue_name == 'extractor':
@@ -246,6 +254,8 @@ def startq(queue_name):
         command = 'celery -A dva worker -l info -c {} -Q {} -n {}.%h -f logs/{}.log'.format(1, Q_DETECTOR,Q_DETECTOR, Q_DETECTOR)
     elif queue_name == 'retriever':
         command = 'celery -A dva worker -l info -c {} -Q {} -n {}.%h -f logs/{}.log'.format(1, Q_RETRIEVER,Q_RETRIEVER,Q_RETRIEVER)
+    elif queue_name == 'face':
+        command = 'celery -A dva worker -l info -c {} -Q {} -n {}.%h -f logs/{}.log'.format(1, Q_FACE,Q_FACE,Q_FACE)
     else:
         raise NotImplementedError
     logging.info(command)
@@ -416,3 +426,13 @@ def process_video_list(filename):
     vlist = json.load(file(filename))
     for video in vlist:
         handle_youtube_video(video['name'],video['url'])
+
+
+@task
+def perform_face_detection(video_id):
+    import django
+    sys.path.append(os.path.dirname(__file__))
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "dva.settings")
+    django.setup()
+    from dvaapp.tasks import perform_face_indexing
+    perform_face_indexing(int(video_id))
